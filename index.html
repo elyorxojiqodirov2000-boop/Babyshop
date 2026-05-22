@@ -347,9 +347,11 @@ body.admin-mode{padding-bottom:70px;}
     <div class="catalog-grid" id="catalogGrid"></div>
   </div>
 
-  <!-- Hidden admin entry -->
-  <div style="text-align:center;margin-top:24px;padding-bottom:80px;">
-    <button onclick="showPage('login',null)" style="background:none;border:none;color:var(--bg3);font-size:0.7rem;cursor:pointer;font-family:'Inter',sans-serif;">⚙</button>
+  <!-- Admin entry -->
+  <div style="text-align:center;margin-top:30px;padding-bottom:100px;">
+    <button onclick="showPage('login',null)" style="background:#1E1E1E;border:1px solid #2A2A2A;color:#555;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;padding:8px 20px;border-radius:20px;font-weight:600;">
+      🔐 Admin kirish
+    </button>
   </div>
 </div>
 
@@ -1120,16 +1122,29 @@ function showToast(msg){const t=document.getElementById("toast");t.textContent=m
 
 // ============ NOTIFICATIONS ============
 function sendTelegramNotification(order){
-  const prods=order.products.map(p=>`${p.name||p.brand} 00b7 ${p.size} 2014 ${p.qty} dona${p.promoName?" D83cDf81":""}`).join("\n");
-  const text=`D83dDce6 YANGI BUYURTMA!\n\nD83cDfe5 Do'kon: ${order.shop}\nD83dDcf1 Tel: ${order.phone}\n\nD83dDee0 Mahsulotlar:\n${prods}\n\nD83dDcb0 Jami: ${order.totalSum?order.totalSum.toLocaleString()+" so'm":"Narxsiz"}${order.totalSaved?`\nD83cDf81 Chegirma: -${order.totalSaved.toLocaleString()} so'm`:""}${order.note?`\nD83dDcdd Izoh: ${order.note}`:""}\n\nD83dDd52 ${order.time}`;
-  fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({chat_id:TG_CHAT_ID,text,parse_mode:"HTML"})}).catch(e=>console.log("TG error:",e));
+  const prods=order.products.map(p=>(p.name||p.brand)+' - '+p.size+' - '+p.qty+' dona').join(', ');
+  const data={
+    shop:order.shop,
+    phone:order.phone,
+    products:prods,
+    total:order.totalSum?order.totalSum.toLocaleString()+' som':'Narxsiz',
+    saved:order.totalSaved?order.totalSaved.toLocaleString()+' som':'0',
+    note:order.note||'',
+    time:order.time,
+    id:order.id
+  };
+  fetch('https://hook.eu1.make.com/x2wjtwean7xfa7j8qgof23ssyr8wcbb5',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)
+  }).then(function(){console.log('Webhook sent!');}).catch(function(e){console.log('Webhook error:',e);});
 }
 function sendEmailNotification(order){
-  const prods=order.products.map(p=>`${p.name||p.brand} 00b7 ${p.size} 2014 ${p.qty} dona`).join(", ");
-  const subj=`BabyShop: Yangi buyurtma - ${order.shop}`;
-  const body=`Do'kon: ${order.shop}\nTelefon: ${order.phone}\nMahsulotlar: ${prods}\nJami: ${order.totalSum?order.totalSum.toLocaleString()+" so'm":"Narxsiz"}${order.note?"\nIzoh: "+order.note:""}\nVaqt: ${order.time}`;
-  const mailtoLink=`mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
-  try{window.open(mailtoLink,"_blank");}catch(e){}
+  const prods=order.products.map(function(p){return (p.name||p.brand)+' - '+p.size+' - '+p.qty+' dona';}).join(', ');
+  const subj='BabyShop: Yangi buyurtma - '+order.shop;
+  const body='Dokon: '+order.shop+'\nTelefon: '+order.phone+'\nMahsulotlar: '+prods+'\nJami: '+(order.totalSum?order.totalSum.toLocaleString()+' som':'Narxsiz')+(order.note?'\nIzoh: '+order.note:'')+'\nVaqt: '+order.time;
+  const mailtoLink='mailto:'+ADMIN_EMAIL+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);
+  try{window.open(mailtoLink,'_blank');}catch(e){}
 }
 // ============ INIT ============
 (function(){
