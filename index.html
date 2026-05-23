@@ -8,6 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="BabyShop">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -557,6 +558,10 @@ body.admin-mode{padding-bottom:70px;}
 
 <script>
 // CONFIG
+
+const SUPABASE_URL = 'https://jxzjbqncshkwelsamgyf.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eFVAJeYtNFckgpmqNHRHAQ_Evde9cOv';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const TG_TOKEN='8859519707:AAF5kgAP_TiErPpnta6I8Ve30ampW64toWg';
 const TG_CHAT_ID='6596706076';
 const ADMIN_EMAIL='elyorxojiqodirov2000@gmail.com';
@@ -797,6 +802,12 @@ function submitOrder(){
   });
   const order={id:'BUY-'+Date.now(),shop,phone,note,products,totalSum,totalSaved,status:'yangi',time:new Date().toLocaleString('uz-UZ')};
   orders.unshift(order);save('bs4_orders',orders);
+  // Save to Supabase
+  sb.from('orders').insert({
+    id:order.id, shop:order.shop, phone:order.phone, note:order.note,
+    products:order.products, total_sum:order.totalSum||0,
+    total_saved:order.totalSaved||0, status:'yangi'
+  }).then(function(r){if(r.error)console.log('Supabase error:',r.error);});
   sendTelegramNotification(order);
   sendEmailNotification(order);
   cart={};updateCartBar();renderCatalog();closeModal();
@@ -807,6 +818,18 @@ function submitOrder(){
 }
 
 // ============ ADMIN ORDERS ============
+async function loadOrdersFromSupabase(){
+  const {data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false});
+  if(data&&!error){
+    orders=data.map(function(o){return{
+      id:o.id, shop:o.shop, phone:o.phone, note:o.note||'',
+      products:o.products||[], totalSum:o.total_sum, totalSaved:o.total_saved,
+      status:o.status, time:new Date(o.created_at).toLocaleString('uz-UZ')
+    };});
+    save('bs4_orders',orders);
+  }
+  renderOrders();
+}
 function renderOrders(){
   const search=(document.getElementById('searchBox')?.value||'').toLowerCase();
   const list=orders.filter(o=>{
@@ -834,8 +857,18 @@ function renderOrders(){
   renderStats();
 }
 function statusLabel(s){return{yangi:'🟡 Yangi',qabul:'🔵 Qabul qilindi',yetkazildi:'🟢 Yetkazildi'}[s]||s;}
-function setStatus(id,s){const o=orders.find(x=>x.id===id);if(o){o.status=s;save('bs4_orders',orders);renderOrders();}}
-function deleteOrder(id){if(!confirm("O'chirishni tasdiqlaysizmi?"))return;orders=orders.filter(x=>x.id!==id);save('bs4_orders',orders);renderOrders();}
+function setStatus(id,s){
+  const o=orders.find(x=>x.id===id);
+  if(o){
+    o.status=s;save('bs4_orders',orders);renderOrders();
+    sb.from('orders').update({status:s}).eq('id',id).then(function(r){if(r.error)console.log('Update error:',r.error);});
+  }
+}
+function deleteOrder(id){
+  if(!confirm("O'chirishni tasdiqlaysizmi?"))return;
+  orders=orders.filter(x=>x.id!==id);save('bs4_orders',orders);renderOrders();
+  sb.from('orders').delete().eq('id',id).then(function(r){if(r.error)console.log('Delete error:',r.error);});
+}
 function clearAll(){if(!confirm("Hammani o'chirishni tasdiqlaysizmi?"))return;orders=[];save('bs4_orders',orders);renderOrders();}
 function filterOrders(s,btn){currentFilter=s;document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderOrders();}
 function renderStats(){
@@ -910,6 +943,14 @@ function deleteCatalogProduct(pid){
 function saveCatalogProducts(){
   save('bs4_products',catalogProducts);
   renderCatalog();
+  // Sync to Supabase
+  sb.from('products').delete().neq('id','x').then(function(){
+    if(catalogProducts.length){
+      sb.from('products').insert(catalogProducts.map(function(p){
+        return{id:p.id,name:p.name,brand:p.brand,size:p.size,price:p.price||0,image_data:p.imageData||''};
+      })).then(function(r){if(r.error)console.log('Products sync error:',r.error);});
+    }
+  });
   const msg=document.getElementById('prodSaveMsg');
   msg.style.display='inline';setTimeout(()=>msg.style.display='none',2500);
   showToast('✅ Mahsulotlar saqlandi!');
@@ -1082,12 +1123,12 @@ function showPage(name,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(name==='admin'){renderOrders();}
+  if(name==='admin'){loadOrdersFromSupabase();}
   if(name==='prices'){renderPriceTable();}
   if(name==='promos'){renderPromos();updatePromoSelects();}
   if(name==='products'){renderProdAdmin();renderBrandsList();renderSizesList();}
   if(name==='ads'){renderAdAdminList();}
-  if(name==='client'){renderCatalog();renderAdSlider();}
+  if(name==='client'){loadProductsFromSupabase();renderAdSlider();}
 }
 function showAdminSection(name,btn){
   document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('active'));
@@ -1146,11 +1187,22 @@ function sendEmailNotification(order){
   const mailtoLink='mailto:'+ADMIN_EMAIL+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);
   try{window.open(mailtoLink,'_blank');}catch(e){}
 }
+async function loadProductsFromSupabase(){
+  const {data,error}=await sb.from('products').select('*');
+  if(data&&!error&&data.length){
+    catalogProducts=data.map(function(p){return{
+      id:p.id,name:p.name,brand:p.brand,size:p.size,price:p.price||0,imageData:p.image_data||''
+    };});
+    save('bs4_products',catalogProducts);
+  }
+  renderCatalog();
+}
+
 // ============ INIT ============
 (function(){
   // admin hidden by default via CSS
   renderAdSlider();
-  renderCatalog();
+  loadProductsFromSupabase();
   renderStats();
   updatePromoSelects();
 })();
